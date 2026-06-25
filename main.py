@@ -2,8 +2,32 @@ from datetime import datetime
 from random import randint
 from typing import Any
 from fastapi import FastAPI, HTTPException, Response
+from sqlmodel import Field, Session, SQLModel, create_engine, select
+
+import os
+from dotenv import load_dotenv
+
+
+load_dotenv()
 
 app = FastAPI()
+
+class Campaign(SQLModel, table=True):
+    campaign_id: int | None = Field(default=None, primary_key=True)
+    name: str = Field(index=True)
+    due_date: datetime | None 
+    created_at: datetime
+
+
+PG_USER = os.getenv("PG_USER")
+PG_PASSWORD = os.getenv("PG_PASSWORD")
+PH_HOST = os.getenv("PH_HOST")
+PG_DB = os.getenv("PG_DB")
+
+postgres_url = f"postgresql://{PG_USER}:{PG_PASSWORD}@{PH_HOST}:5432/{PG_DB}"
+
+connect_args = {"check_same_thread": False}
+engine = create_engine(postgres_url,connect_args=connect_args) # Used to interact with the postgres DB
 
 
 campaigns: Any = [
