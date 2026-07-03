@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Campaigns Blog</title>
+</head>
+<body>
+    <h1> Campaigns </h1>
+    <br>
+
+    {% for campaign in campaigns %}
+        <h2> Name: {{campaign.name}}</h2>
+        <p> Due Date: {{campaign.due_date}}</p>
+        <p> Created At: {{campaign.created_at}}</p>
+    {% endfor %}
+</body>
+</html>

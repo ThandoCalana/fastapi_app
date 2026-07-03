@@ -1,11 +1,13 @@
 from datetime import datetime
 from random import randint
 from typing import Any
-from fastapi import FastAPI, HTTPException, Response
-from fastapi.responses import HTMLResponse
+from fastapi import FastAPI, HTTPException, Response, Request
+from fastapi.templating import Jinja2Templates
 # from fastapi.routing import APIRouter
 
 app = FastAPI()
+
+templates = Jinja2Templates(directory="templates") # Tells templating framework to look for our templates in the 'templates' dir/ folder 
 # now: datetime = datetime.now().strftime('%Y-%m-%dT%H:%M') 
 
 # app = "Aza"
@@ -49,14 +51,16 @@ campaigns: list[dict] = [
 
 # GET endpoint for the homepage
 # Stacking decorators = same response on multiple routes
-@app.get("/", response_class=HTMLResponse, include_in_schema=False) # Exclude from API documentation
-@app.get("/campaigns", response_class=HTMLResponse, include_in_schema=False) # Not useful for API consumption/ dev
-def get_campaigns():
-    return f"<h1> {campaigns[0]["name"]} </h1>"
+# Don't even need mutliple endpoints. Can just direct request to specified
+@app.get("/", include_in_schema=False) # Exclude from API documentation
+@app.get("/campaigns", include_in_schema=False) # Not useful for API consumption/ dev
+
+def get_campaigns(request: Request):
+    return templates.TemplateResponse(request, "home.html", {"campaigns": campaigns}) # Pass campaigns dict list to be used in/on the actual html template file
 
 
 
-@app.get("/campaigns/{id}", response_class=HTMLResponse)
+@app.get("/campaigns/{id}")
 def read_campaign(id: int):
     if id > (len(campaigns)):
         raise HTTPException(status_code=404)
