@@ -1,6 +1,5 @@
 {% extends "layout.html" %}
 {% block content %}
-  {% for campaign in campaigns %}
     <article class="content-section py-3 px-4 mb-4">
       <div class="d-flex align-items-start gap-4">
         <img class="rounded-circle article-img flex-shrink-0"
@@ -16,11 +15,10 @@
           </div>
           <h2>
             <a class="article-title" 
-            href="#">{{ campaign.name }}</a>
+            href="{{ url_for('campaign', campaign_id=campaign['campaign_id']) }}">{{ campaign.name }}</a>
           </h2>
           <p class="article-content">{{ campaign.campaign_details }}</p>
         </div>
       </div>
     </article>
-  {% endfor %}
 {% endblock content %}
