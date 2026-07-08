@@ -16,7 +16,7 @@
           </div>
           <h2>
             <a class="article-title" 
-            href="#">{{ campaign.name }}</a>
+            href="{{ url_for('campaign', campaign_id=campaign['campaign_id']) }}">{{ campaign.name }}</a>
           </h2>
           <p class="article-content">{{ campaign.campaign_details }}</p>
         </div>

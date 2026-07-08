@@ -6,6 +6,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.templating import Jinja2Templates
+from schemas import CreateCampaign, ResponseCampaign
 # from fastapi.routing import APIRouter
 
 app = FastAPI()
@@ -110,20 +111,17 @@ def home(request: Request):
         ) 
 
 # API HOMEPAGE ENDPOINT
-@app.get(path="/api/campaigns") 
+@app.get(path="/api/campaigns", response_model=list[ResponseCampaign]) 
 
-def get_campaigns(request: Request):
-    return templates.TemplateResponse(
-        request, 
-        "home.html", 
-        {"campaigns": campaigns, "title": "Home"}
-        ) 
+def get_campaigns():
+    return campaigns
 
 
 
 # USER CAMPAIGN PAGE ENDPOINT 
 @app.get(
         path="/campaigns/{campaign_id}",
+        response_model= ResponseCampaign,
         name='campaign',
         description="Get a campaign by its ID",
         include_in_schema=False
@@ -147,19 +145,13 @@ def campaign_page(request: Request, campaign_id: int):
 @app.get(
         path="/api/campaigns/{campaign_id}",
         name='campaign',
-        description="Get a campaign by its ID",
-        include_in_schema=False
+        description="Get a campaign by its ID"
         )
-def read_campaign(request: Request, campaign_id: int):
+def read_campaign(campaign_id: int):
 
     for campaign in campaigns:
         if campaign_id == campaign.get('campaign_id'):
-            title = campaign['name']
-            return templates.TemplateResponse(
-                request, 
-                "campaign.html", 
-                {"campaign": campaign, "title": title}
-                )  
+            return campaign    
         
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
@@ -167,19 +159,24 @@ def read_campaign(request: Request, campaign_id: int):
     
 
 @app.post(
-        path="/campaigns"
+        path="/api/campaigns",
+        response_model= ResponseCampaign,
+        status_code= status.HTTP_201_CREATED
         )
-def create_campaign(campaign: dict):
+def create_campaign(campaign: CreateCampaign):
 
+    new_id = max(c["campaign_id"] for c in campaigns) + 1 if campaigns else 1
     new_campaign: dict = {
-        "campaign_id": randint(100, 200),
-        "name": campaign.get('name'),
-        "due_date": campaign.get('due_date'),
-        "created_at": datetime.now()
+        "campaign_id": new_id,
+        "name": campaign.name,
+        "author": campaign.author,
+        "campaign_details": campaign.campaign_details,
+        "due_date": campaign.due_date,
+        "created_at": str(datetime.now())
     }
 
     campaigns.append(new_campaign)
-    return {"New campaign": new_campaign}
+    return new_campaign
 
 
 @app.put(
