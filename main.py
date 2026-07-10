@@ -1,13 +1,21 @@
 from datetime import datetime, timedelta
 from random import randint
 from fastapi.staticfiles import StaticFiles
-from fastapi import FastAPI, HTTPException, Response, Request, status
+from fastapi import FastAPI, HTTPException, Response, Request, status, Depends
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
 from fastapi.templating import Jinja2Templates
-from schemas import CreateCampaign, ResponseCampaign
+from sqlalchemy.orm import Session
+from sqlalchemy import select
+from typing import Annotated
+from schemas import CreateCampaign, ResponseCampaign, CreateUser, ResponseUser
+
+from database import get_db, engine, Base
+from models import Campaigns, User
 # from fastapi.routing import APIRouter
+
+Base.metadata.create_all(bind=engine) # Looks at all models inheriting from Base and creates them if they don't exist
 
 app = FastAPI()
 
@@ -38,8 +46,7 @@ campaigns: list[dict] = [
             "A nationwide campaign focused on increasing voter participation and "
             "promoting government transparency through community engagement events."
         ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d'),
-        "due_date": now.strftime('%Y-%m-%d')
+        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
     },
     {
         "campaign_id": 2,
@@ -49,8 +56,7 @@ campaigns: list[dict] = [
             "This campaign advocates for safer neighborhoods by investing in local "
             "infrastructure, community policing, and public recreation facilities."
         ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d'),
-        "due_date": now.strftime('%Y-%m-%d')
+        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
     },
     {
         "campaign_id": 3,
@@ -60,8 +66,7 @@ campaigns: list[dict] = [
             "Focused on improving access to quality education through increased funding "
             "for schools, teacher development, and student support programs."
         ),
-        "due_date": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d'),
-        "created_at": now.strftime('%Y-%m-%d')
+        "created_at": (now + timedelta(days=randint(-20,0))).strftime('%Y-%m-%d')
     },
     {
         "campaign_id": 4,
@@ -71,8 +76,7 @@ campaigns: list[dict] = [
             "Promotes the transition to renewable energy by supporting solar and wind "
             "projects while creating new green jobs across the country."
         ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d'),
-        "due_date": now.strftime('%Y-%m-%d')
+        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
     },
     {
         "campaign_id": 5,
@@ -82,17 +86,22 @@ campaigns: list[dict] = [
             "Aims to expand affordable healthcare by increasing funding for public "
             "clinics, reducing medicine costs, and improving rural healthcare access."
         ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d'),
-        "due_date": now.strftime('%Y-%m-%d')
+        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
     }
 ]
 
-# GET endpoint for the homepage - for USER HOMEPAGE
+# --------------------------------------------------------------------------------------------------------
+# -------------------------------------------  GET ENDPOINTS   -------------------------------------------
+# --------------------------------------------------------------------------------------------------------
+
+# GET endpoint for the homepage - for frontend user
 # Stacking decorators = same response on multiple routes
 # Don't even need mutliple endpoints. Can just direct request to specified
+# Separation of 'API' and 'HTML' endpoints is not essentail.
+# One renders the HTML for the enduser, the other returns JSON for BE user
 @app.get(
         path="/",
-        name="home", # name so we know which unique route to access. Affects URL path user gets directed to
+        name="home", # name so we know which unique route to access. Affects URL path user gets directed to 
         include_in_schema=False # Exclude from API documentation
         ) 
 
@@ -102,7 +111,10 @@ campaigns: list[dict] = [
         include_in_schema=False
         ) # Not useful for API consumption/ dev. THESE ARE ONLY HTML ENDPOINTS NOT API FUNCTIONALITY
 
-def home(request: Request):
+def home(request: Request, db: Annotated[Session, Depends(get_db)]):
+    query = db.execute(select(Campaigns).group_by(User.username))
+    campaigns = query.scalar_one()
+
     # Pass campaigns dict list to be used in/on the actual html template file
     return templates.TemplateResponse(
         request, 
@@ -110,15 +122,67 @@ def home(request: Request):
         {"campaigns": campaigns, "title": "Home"}
         ) 
 
-# API HOMEPAGE ENDPOINT
+
+# [API] HOMEPAGE ENDPOINT
 @app.get(path="/api/campaigns", response_model=list[ResponseCampaign]) 
 
 def get_campaigns():
     return campaigns
 
 
+# [API] Fecth all users
+@app.get(path="/api/users", response_model=list[ResponseUser]) 
 
-# USER CAMPAIGN PAGE ENDPOINT 
+def get_users(db: Annotated[Session, Depends(get_db)]):
+
+    result = db.execute(select(User))
+    users = result.scalars()
+
+    if users:
+        return users
+    return "No users found"
+
+
+# [API] Fecth current user's campaigns
+@app.get(path="/api/users/{user_id}/campaigns", response_model=list[ResponseUser]) 
+
+def user_campaigns(user_id: int, db: Annotated[Session, Depends(get_db)]):
+    user_check = db.execute(select(User).where(User.user_id==user_id))
+    user_check_result = user_check.scalar_one()
+    
+    if user_check_result:
+        result = db.execute(select(User.campaigns).where(User.user_id==user_id))
+        campaigns = result.scalars()
+
+        if campaigns:
+            return campaigns
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No campaigns found")
+    
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+# [HTML] Fetch current user's campaigns
+@app.get(path="/users/{user_id}/campaigns", name="user_campaigns", response_model=list[ResponseUser]) 
+
+def get_user_campaigns(request: Request, user_id: int, db: Annotated[Session, Depends(get_db)]):
+    user_check = db.execute(select(User).where(User.user_id==user_id))
+    user_check_result = user_check.scalar_one()
+    
+    if user_check_result:
+        result = db.execute(select(User.campaigns).where(User.user_id==user_id))
+        campaigns = result.scalars()
+
+        if campaigns:
+            return templates.TemplateResponse(
+                    request=request,
+                    name="user_campaigns.html",
+                    context={"campaigns": campaigns, "title": "User Campaigns"}
+        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No campaigns found")
+    
+    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+
+
+# [HTML] GET CAMPAIGNS 
 @app.get(
         path="/campaigns/{campaign_id}",
         response_model= ResponseCampaign,
@@ -141,13 +205,14 @@ def campaign_page(request: Request, campaign_id: int):
         status_code=status.HTTP_404_NOT_FOUND,
         detail="No campaign Found")
 
-# API CAMPAIGN PAGE ENDPOINT 
+
+# [API] GET CAMPAIGNS ENDPOINT 
 @app.get(
-        path="/api/campaigns/{campaign_id}",
+        path="/users/{user_id}/campaigns",
         name='campaign',
         description="Get a campaign by its ID"
         )
-def read_campaign(campaign_id: int):
+def read_campaign(request: Request, campaign_id: int, db: Annotated[Session, Depends(get_db)]):
 
     for campaign in campaigns:
         if campaign_id == campaign.get('campaign_id'):
@@ -155,30 +220,60 @@ def read_campaign(campaign_id: int):
         
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND,
-        detail="No campaign Found")       
-    
+        detail="No campaign Found")  
 
+# --------------------------------------------------------------------------------------------------------
+# -------------------------------------------  POST ENDPOINTS   ------------------------------------------
+# --------------------------------------------------------------------------------------------------------
+
+# [API] Create user
+@app.post(
+        path="/api/users",
+        response_model= ResponseUser,
+        status_code= status.HTTP_201_CREATED
+        )
+def create_user(user: User, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(User.user_id).where(User.user_id==user.user_id))
+    existing_user = result.scalar_one()
+
+    if existing_user:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="User already exists"
+        )
+    
+    new_user = User(
+        username=user.username,
+        email=user.email
+        )
+    
+    db.add(new_user)
+    db.commit()
+    return new_user
+
+# [API] Create new campaign
 @app.post(
         path="/api/campaigns",
         response_model= ResponseCampaign,
         status_code= status.HTTP_201_CREATED
         )
-def create_campaign(campaign: CreateCampaign):
+def create_campaign(campaign: CreateCampaign, db: Annotated[Session, Depends(get_db)]):
 
-    new_id = max(c["campaign_id"] for c in campaigns) + 1 if campaigns else 1
-    new_campaign: dict = {
-        "campaign_id": new_id,
-        "name": campaign.name,
-        "author": campaign.author,
-        "campaign_details": campaign.campaign_details,
-        "due_date": campaign.due_date,
-        "created_at": str(datetime.now())
-    }
+    new_campaign = Campaigns(
+        campaign_name=campaign.campaign_name,
+        author=campaign.author,
+        campaign_details=campaign.campaign_details,
+        created_at=datetime.now()
+    )
 
-    campaigns.append(new_campaign)
+    db.add(new_campaign)
+    db.commit()
+
     return new_campaign
 
-
+# --------------------------------------------------------------------------------------------------------
+# -------------------------------------------   PUT ENDPOINTS   ------------------------------------------
+# --------------------------------------------------------------------------------------------------------
 @app.put(
         path="/campaigns/{id}", 
         status_code=status.HTTP_201_CREATED
@@ -190,14 +285,15 @@ def update_campaign(id: int, body: dict):
             update: dict = {
                 "campaign_id": id,
                 "name": body.get('name'),
-                "due_date": body.get('due_date'),
                 "created_at": campaign.get("created_at")
             }
 
             campaigns[index] = update
             return {"update": update}
     raise HTTPException(status_code=404)
-
+# --------------------------------------------------------------------------------------------------------
+# -------------------------------------------   DELETE ENDPOINTS   ---------------------------------------
+# --------------------------------------------------------------------------------------------------------
 @app.delete(
         path="/campaigns/{id}"
         )
@@ -208,6 +304,13 @@ def delete_campaign(id: int):
             campaigns.pop(index)
             return Response(status_code=status.HTTP_204_NO_CONTENT)
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
+     
+
+
+
+# --------------------------------------------------------------------------------------------------------
+# -------------------------------   EXCEPTION HANDLING ENDPOINTS   ---------------------------------------
+# --------------------------------------------------------------------------------------------------------
 
 
 # Using Startlette Exception Handler to catch 'all' HTTP excpetions over and above fastapi's
