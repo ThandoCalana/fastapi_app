@@ -12,7 +12,7 @@ from typing import Annotated
 from schemas import CreateCampaign, ResponseCampaign, CreateUser, ResponseUser
 
 from database import get_db, engine, Base
-from models import Campaigns, User
+import models
 # from fastapi.routing import APIRouter
 
 Base.metadata.create_all(bind=engine) # Looks at all models inheriting from Base and creates them if they don't exist
@@ -22,6 +22,8 @@ app = FastAPI()
 # Mounting static folder to the app. Now, anything inside static folder is accessible
 # Inputs => file path, instance of StaticFiles class using the 'static' folder, name we can use to ref in templates
 app.mount("/static", StaticFiles(directory="static"), name="static")
+
+app.mount("/media", StaticFiles(directory="media"), name="media")
 
 # Tells templating framework to look for our templates in the 'templates' dir/ folder 
 templates = Jinja2Templates(directory="templates") 
@@ -37,58 +39,6 @@ templates = Jinja2Templates(directory="templates")
 now = datetime.now()
 due = (now + timedelta(days=randint(1,10)))
 
-campaigns: list[dict] = [
-    {
-        "campaign_id": 1,
-        "name": "Vote for Change 2026",
-        "author": "Barrack",
-        "campaign_details": (
-            "A nationwide campaign focused on increasing voter participation and "
-            "promoting government transparency through community engagement events."
-        ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
-    },
-    {
-        "campaign_id": 2,
-        "name": "Stronger Communities Initiative",
-        "author": "Obama",
-        "campaign_details": (
-            "This campaign advocates for safer neighborhoods by investing in local "
-            "infrastructure, community policing, and public recreation facilities."
-        ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
-    },
-    {
-        "campaign_id": 3,
-        "name": "Education First Campaign",
-        "author": "Donald",
-        "campaign_details": (
-            "Focused on improving access to quality education through increased funding "
-            "for schools, teacher development, and student support programs."
-        ),
-        "created_at": (now + timedelta(days=randint(-20,0))).strftime('%Y-%m-%d')
-    },
-    {
-        "campaign_id": 4,
-        "name": "Clean Energy for Tomorrow",
-        "author": "Trump",
-        "campaign_details": (
-            "Promotes the transition to renewable energy by supporting solar and wind "
-            "projects while creating new green jobs across the country."
-        ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
-    },
-    {
-        "campaign_id": 5,
-        "name": "Healthcare Access for All",
-        "author": "Sanders",
-        "campaign_details": (
-            "Aims to expand affordable healthcare by increasing funding for public "
-            "clinics, reducing medicine costs, and improving rural healthcare access."
-        ),
-        "created_at": (now + timedelta(days=randint(-10,0))).strftime('%Y-%m-%d')
-    }
-]
 
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------------------  GET ENDPOINTS   -------------------------------------------
@@ -112,8 +62,8 @@ campaigns: list[dict] = [
         ) # Not useful for API consumption/ dev. THESE ARE ONLY HTML ENDPOINTS NOT API FUNCTIONALITY
 
 def home(request: Request, db: Annotated[Session, Depends(get_db)]):
-    query = db.execute(select(Campaigns).group_by(User.username))
-    campaigns = query.scalar_one()
+    query = db.execute(select(models.Campaigns))
+    campaigns = query.scalars()
 
     # Pass campaigns dict list to be used in/on the actual html template file
     return templates.TemplateResponse(
@@ -126,16 +76,20 @@ def home(request: Request, db: Annotated[Session, Depends(get_db)]):
 # [API] HOMEPAGE ENDPOINT
 @app.get(path="/api/campaigns", response_model=list[ResponseCampaign]) 
 
-def get_campaigns():
+def get_campaigns(db: Annotated[Session, Depends(get_db)]):
+    query = db.execute(select(models.Campaigns).group_by(models.Users.username))
+    campaigns = query.scalars().first() # selects one or none, Returns None
+    # campaigns = query.scalar_one() raises an error if nothing is found
+
     return campaigns
 
 
-# [API] Fecth all users
+# [API] Fecth all users - Only API, why would users get access to view site users?
 @app.get(path="/api/users", response_model=list[ResponseUser]) 
 
 def get_users(db: Annotated[Session, Depends(get_db)]):
 
-    result = db.execute(select(User))
+    result = db.execute(select(models.Users))
     users = result.scalars()
 
     if users:
@@ -147,11 +101,11 @@ def get_users(db: Annotated[Session, Depends(get_db)]):
 @app.get(path="/api/users/{user_id}/campaigns", response_model=list[ResponseUser]) 
 
 def user_campaigns(user_id: int, db: Annotated[Session, Depends(get_db)]):
-    user_check = db.execute(select(User).where(User.user_id==user_id))
-    user_check_result = user_check.scalar_one()
+    user_check = db.execute(select(models.Users).where(models.Users.user_id==user_id))
+    user_check_result = user_check.scalars().first()
     
     if user_check_result:
-        result = db.execute(select(User.campaigns).where(User.user_id==user_id))
+        result = db.execute(select(models.Users.campaigns).where(models.Users.user_id==user_id))
         campaigns = result.scalars()
 
         if campaigns:
@@ -160,15 +114,16 @@ def user_campaigns(user_id: int, db: Annotated[Session, Depends(get_db)]):
     
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
+
 # [HTML] Fetch current user's campaigns
-@app.get(path="/users/{user_id}/campaigns", name="user_campaigns", response_model=list[ResponseUser]) 
+@app.get(path="/users/{user_id}/campaigns", name="user_campaigns") 
 
 def get_user_campaigns(request: Request, user_id: int, db: Annotated[Session, Depends(get_db)]):
-    user_check = db.execute(select(User).where(User.user_id==user_id))
-    user_check_result = user_check.scalar_one()
+    user_check = db.execute(select(models.Users).where(models.Users.user_id==user_id))
+    user_check_result = user_check.scalars().first()
     
     if user_check_result:
-        result = db.execute(select(User.campaigns).where(User.user_id==user_id))
+        result = db.execute(select(models.Users.campaigns).where(models.Users.user_id==user_id))
         campaigns = result.scalars()
 
         if campaigns:
@@ -182,7 +137,7 @@ def get_user_campaigns(request: Request, user_id: int, db: Annotated[Session, De
     raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
 
-# [HTML] GET CAMPAIGNS 
+# [HTML] GET CAMPAIGNS BY ID
 @app.get(
         path="/campaigns/{campaign_id}",
         response_model= ResponseCampaign,
@@ -190,11 +145,14 @@ def get_user_campaigns(request: Request, user_id: int, db: Annotated[Session, De
         description="Get a campaign by its ID",
         include_in_schema=False
         )
-def campaign_page(request: Request, campaign_id: int):
+def campaign_page(request: Request, campaign_id: int, db: Annotated[Session, Depends(get_db)]):
+
+    results = db.execute(select(models.Campaigns).where(models.Campaigns.campaign_id==campaign_id))
+    campaigns = results.scalars()
 
     for campaign in campaigns:
-        if campaign_id == campaign.get('campaign_id'):
-            title = campaign['name']
+        if campaign_id == campaign.campaign_id:
+            title = campaign.campaign_name
             return templates.TemplateResponse(
                 request, 
                 "campaign.html", 
@@ -206,22 +164,6 @@ def campaign_page(request: Request, campaign_id: int):
         detail="No campaign Found")
 
 
-# [API] GET CAMPAIGNS ENDPOINT 
-@app.get(
-        path="/users/{user_id}/campaigns",
-        name='campaign',
-        description="Get a campaign by its ID"
-        )
-def read_campaign(request: Request, campaign_id: int, db: Annotated[Session, Depends(get_db)]):
-
-    for campaign in campaigns:
-        if campaign_id == campaign.get('campaign_id'):
-            return campaign    
-        
-    raise HTTPException(
-        status_code=status.HTTP_404_NOT_FOUND,
-        detail="No campaign Found")  
-
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------------------  POST ENDPOINTS   ------------------------------------------
 # --------------------------------------------------------------------------------------------------------
@@ -232,9 +174,9 @@ def read_campaign(request: Request, campaign_id: int, db: Annotated[Session, Dep
         response_model= ResponseUser,
         status_code= status.HTTP_201_CREATED
         )
-def create_user(user: User, db: Annotated[Session, Depends(get_db)]):
-    result = db.execute(select(User.user_id).where(User.user_id==user.user_id))
-    existing_user = result.scalar_one()
+def create_user(user: CreateUser, db: Annotated[Session, Depends(get_db)]):
+    result = db.execute(select(models.Users.user_id).where(models.Users.email==user.email))
+    existing_user = result.scalars().first()
 
     if existing_user:
         raise HTTPException(
@@ -242,7 +184,7 @@ def create_user(user: User, db: Annotated[Session, Depends(get_db)]):
             detail="User already exists"
         )
     
-    new_user = User(
+    new_user = models.Users(
         username=user.username,
         email=user.email
         )
@@ -259,9 +201,9 @@ def create_user(user: User, db: Annotated[Session, Depends(get_db)]):
         )
 def create_campaign(campaign: CreateCampaign, db: Annotated[Session, Depends(get_db)]):
 
-    new_campaign = Campaigns(
+    new_campaign = models.Campaigns(
         campaign_name=campaign.campaign_name,
-        author=campaign.author,
+        user_id = campaign.user_id,
         campaign_details=campaign.campaign_details,
         created_at=datetime.now()
     )

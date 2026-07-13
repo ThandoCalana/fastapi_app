@@ -11,7 +11,7 @@ engine = create_engine(
         ) 
 
 # Creates a session every time we interact with backend db
-SessionLocal = sessionmaker(bind=engine, auto_commit=False, auto_flush=False)
+SessionLocal = sessionmaker(bind=engine, autocommit=False, autoflush=False)
 
 class Base(DeclarativeBase):
     pass
