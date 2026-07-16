@@ -16,12 +16,15 @@ class Users(Base):
     email: Mapped[str] = mapped_column(String, nullable=False)
     profile_pic: Mapped[str | None] = mapped_column(String(200), nullable=True, default=None)
     # Establish a relationship between columns on separate tables 
-    campaigns: Mapped[list[Campaigns]] = relationship(back_populates="author")
+    campaigns: Mapped[list[Campaigns]] = relationship(
+                                            back_populates="author", 
+                                            cascade="all, delete-orphan" # if author user is deleted, all posts of that user will also be deleted
+                                            )
 
     @property
     def img_path(self):
         if self.profile_pic:
-            return f"/media/profile_pics/{self.profile_pic}.jpg"
+            return f"/media/profile_pics/{self.profile_pic}"
         return f"/static/profile_pics/default.jpg"
 
     

@@ -9,7 +9,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 from sqlalchemy import select
 from typing import Annotated
-from schemas import CreateCampaign, ResponseCampaign, CreateUser, ResponseUser
+from schemas import CreateCampaign, ResponseCampaign, UpdateCampaign, CreateUser, ResponseUser, UpdateUser
 
 from database import get_db, engine, Base
 import models
@@ -216,37 +216,130 @@ def create_campaign(campaign: CreateCampaign, db: Annotated[Session, Depends(get
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------------------   PUT ENDPOINTS   ------------------------------------------
 # --------------------------------------------------------------------------------------------------------
-@app.put(
-        path="/campaigns/{id}", 
-        status_code=status.HTTP_201_CREATED
-        )
-def update_campaign(id: int, body: dict):
 
-    for index, campaign in enumerate(campaigns):
-        if campaign.get("campaign_id") == id:
-            update: dict = {
-                "campaign_id": id,
-                "name": body.get('name'),
-                "created_at": campaign.get("created_at")
-            }
+# [API] PUT ENDPOINT TO UPDATE A CAMPAIGN BY ID
+@app.put(path="/api/campaigns/{campaign_id}", response_model=list[ResponseUser]) 
 
-            campaigns[index] = update
-            return {"update": update}
-    raise HTTPException(status_code=404)
+def update_campaign_full(campaign_id: int, campaign_data: CreateCampaign, db: Annotated[Session, Depends(get_db)]):
+
+    result = db.execute(select(models.Campaigns).where(models.Campaigns.campaign_id==campaign_id))
+    campaign = result.scalars().first()
+    
+    if not campaign:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found")
+
+    if campaign_data.user_id != campaign.user_id:
+        user_check = db.execute(select(models.Users).where(models.Users.user_id==campaign_data.user_id))
+        user = user_check.scalars().first()
+
+        if not user:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
+    
+    campaign.campaign_name = campaign_data.campaign_name
+    campaign.campaign_details = campaign_data.campaign_details
+    campaign.user_id = campaign_data.user_id
+
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+# [API] PATCH ENDPOINT TO UPDATE A CAMPAIGN BY ID
+@app.patch(path="/api/campaigns/{campaign_id}", response_model=ResponseCampaign) 
+def update_campaign_partial(campaign_id: int, campaign_data: UpdateCampaign, db: Annotated[Session, Depends(get_db)]):
+
+    # Check campaign exists
+    result = db.execute(select(models.Campaigns).where(models.Campaigns.campaign_id==campaign_id))
+    campaign = result.scalars().first()
+    
+    if not campaign:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No campaigns found")
+    
+    update_data = campaign_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(campaign, field, value)
+
+    db.commit()
+    db.refresh(campaign)
+    return campaign
+
+
+# [API] PATCH ENDPOINT TO UPDATE A USER BY THEIR USER_ ID
+@app.patch(path="/api/users/{user_id}", response_model=ResponseUser) 
+def update_user_partial(user_id: int, user_data: UpdateUser, db: Annotated[Session, Depends(get_db)]):
+
+    # Check user exists
+    result = db.execute(select(models.Users).where(models.Users.user_id==user_id))
+    user = result.scalars().first()
+    
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No user found")
+    
+    if user_data.username != None and user_data.username != user.username: # Check if new username doesn't match old username
+        user_result = db.execute(select(models.Users).where(models.Users.username==user_data.username)) # Check if new username doesn't match username in DB
+        existing_user = user_result.scalars().first()
+
+        if existing_user:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username already exists")
+        
+    if user_data.email != None and user_data.email != user.email: 
+        email_result = db.execute(select(models.Users).where(models.Users.email==user_data.email)) 
+        existing_email = email_result.scalars().first()
+
+        if existing_email:
+            raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email already exists")
+
+
+    update_data = user_data.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+
+    # OORR
+    # if update_data.username is not None:
+    #    user.username = update_data.username
+
+    db.commit()
+    db.refresh(user)
+    return user
+            
+
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------------------   DELETE ENDPOINTS   ---------------------------------------
 # --------------------------------------------------------------------------------------------------------
-@app.delete(
-        path="/campaigns/{id}"
-        )
-def delete_campaign(id: int):
 
-    for index, campaign in enumerate(campaigns):
-        if campaign.get("campaign_id") == id:
-            campaigns.pop(index)
-            return Response(status_code=status.HTTP_204_NO_CONTENT)
-    raise HTTPException(status_code=status.HTTP_404_NOT_FOUND)
-     
+# [API] DELETE CAMPAIGNS BY ID
+@app.delete(
+        path="/api/campaigns/{campaign_id}",
+        status_code=status.HTTP_204_NO_CONTENT
+        )
+def delete_campaign(campaign_id: int, db: Annotated[Session, Depends(get_db)]):
+
+    results = db.execute(select(models.Campaigns).where(models.Campaigns.campaign_id==campaign_id))
+    campaign = results.scalars().first()
+
+    # Need to add checks to make sure the user making the delete is the author of the campaign
+
+    if not campaign:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No campaign found")
+    
+    db.delete(campaign)
+    db.commit()
+
+
+# [API] DELETE USER BY ID
+@app.delete(
+        path="/api/users/{user_id}",
+        status_code=status.HTTP_204_NO_CONTENT
+        )
+def delete_user(user_id: int, db: Annotated[Session, Depends(get_db)]):
+
+    results = db.execute(select(models.Users).where(models.Users.user_id==user_id))
+    user = results.scalars().first()
+
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="No user found")
+    
+    db.delete(user)
+    db.commit()
 
 
 
