@@ -1,11 +1,11 @@
 {% extends "layout.html" %}
 {% block content %}
   <h1 class="mb-4">Posts by {{ user.username }}</h1>
-  {% for post in posts %}
+  {% for campaign in campaigns %}
     <article class="content-section py-3 px-4 mb-4">
       <div class="d-flex align-items-start gap-4">
         <img class="rounded-circle article-img flex-shrink-0"
-             src="{{ campaign.author.image_path }}"
+             src="{{ campaign.author.img_path }}"
              alt="{{ campaign.author.username }}'s profile picture"
              width="64"
              height="64"
@@ -13,18 +13,18 @@
         <div class="flex-grow-1">
           <div class="article-metadata mb-2">
             <a class="me-2"
-               href="{{ url_for('user_posts', user_id=campaign.author.id) }}">{{ campaign.author.username }}</a>
-            <small class="text-body-secondary">{{ campaign.date_posted.strftime("%B %d, %Y") }}</small>
+               href="{{ url_for('user_campaigns', user_id=campaign.author.user_id) }}">{{ campaign.author.username }}</a>
+            <small class="text-body-secondary">{{ campaign.created_at.strftime("%B %d, %Y") }}</small>
           </div>
           <h2>
             <a class="article-title"
-               href="{{ url_for('post_page', post_id=campaign.id) }}">{{ campaign.title }}</a>
+               href="{{ url_for('campaign', campaign_id=campaign.campaign_id) }}">{{ campaign.campaign_name }}</a>
           </h2>
-          <p class="article-content">{{ campaign.content }}</p>
+          <p class="article-content">{{ campaign.campaign_details }}</p>
         </div>
       </div>
     </article>
   {% else %}
-    <p class="text-body-secondary">No posts by this user yet.</p>
+    <p class="text-body-secondary">No campaigns by this user yet.</p>
   {% endfor %}
 {% endblock content %}
