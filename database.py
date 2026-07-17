@@ -25,8 +25,6 @@ class Base(DeclarativeBase):
 # Generator to provide a db session each time the function is called
 # Pauses execution and can be called again to resume
 # Updated to async
-
-
 async def get_db():
     async with AsyncSessionLocal() as session:
         yield session

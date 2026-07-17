@@ -20,7 +20,7 @@ async def get_campaigns(db: Annotated[AsyncSession, Depends(get_db)]):
             selectinload(
                 models.Campaigns.author
             )  # selectinload tells the fucntion to also load relationship when it loads up the model
-        )
+        ).order_by(models.Campaigns.created_at.desc())
     )
     campaigns = query.scalars().all()
 

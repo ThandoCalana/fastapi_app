@@ -39,7 +39,7 @@ async def user_campaigns(user_id: int, db: Annotated[AsyncSession, Depends(get_d
     result = await db.execute(
         select(models.Campaigns)
         .options(selectinload(models.Campaigns.author))
-        .where(models.Campaigns.user_id == user_id)
+        .where(models.Campaigns.user_id == user_id).order_by(models.Campaigns.created_at.desc)
     )
     campaigns = result.scalars().all()
 

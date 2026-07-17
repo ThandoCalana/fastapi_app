@@ -84,7 +84,7 @@ due = now + timedelta(days=randint(1, 10))
 )  # Not useful for API consumption/ dev. THESE ARE ONLY HTML ENDPOINTS NOT API FUNCTIONALITY
 async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     query = await db.execute(
-        select(models.Campaigns).options(selectinload(models.Campaigns.author))
+        select(models.Campaigns).options(selectinload(models.Campaigns.author)).order_by(models.Campaigns.created_at.desc())
     )
     campaigns = query.scalars().all()
 
@@ -112,7 +112,8 @@ async def get_user_campaigns(
             select(models.Campaigns)
             .options(selectinload(models.Campaigns.author))
             .where(models.Campaigns.user_id == user_id)
-        )
+            .order_by(models.Campaigns.created_at.desc())
+        )       
         campaigns = result.scalars().all()
 
         if campaigns:
@@ -144,14 +145,13 @@ async def campaign_page(
         .options(selectinload(models.Campaigns.author))
         .where(models.Campaigns.campaign_id == campaign_id)
     )
-    campaigns = results.scalars()
+    campaign = results.scalars().first()
 
-    for campaign in campaigns:
-        if campaign_id == campaign.campaign_id:
-            title = campaign.campaign_name
-            return templates.TemplateResponse(
-                request, "campaign.html", {"campaign": campaign, "title": title}
-            )
+    if campaign_id == campaign.campaign_id:
+        title = campaign.campaign_name
+        return templates.TemplateResponse(
+            request, "campaign.html", {"campaign": campaign, "title": title}
+        )
 
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND, detail="No campaign Found"
