@@ -21,7 +21,7 @@ from database import get_db, engine, Base
 import models
 from routers import users, campaigns
 
-# from fastapi.routing import APIRouter
+# py -c "import secrets; print(secrets.token_hex(32))" to generate a secret in terminal
 
 
 @asynccontextmanager
@@ -147,16 +147,34 @@ async def campaign_page(
     )
     campaign = results.scalars().first()
 
-    if campaign_id == campaign.campaign_id:
+    if campaign:
         title = campaign.campaign_name
         return templates.TemplateResponse(
             request, "campaign.html", {"campaign": campaign, "title": title}
         )
-
     raise HTTPException(
         status_code=status.HTTP_404_NOT_FOUND, detail="No campaign Found"
     )
 
+@app.get(
+    path="/register",
+    name="register_page",
+    include_in_schema=False,
+)
+async def register(request: Request):
+    return templates.TemplateResponse(
+        request, "register.html", {"title": "Register"}
+    )
+
+@app.get(
+    path="/login",
+    name="login_page",
+    include_in_schema=False,
+)
+async def login(request: Request):
+    return templates.TemplateResponse(
+        request, "login.html", {"title": "Login"}
+    )
 
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------   EXCEPTION HANDLING ENDPOINTS   ---------------------------------------

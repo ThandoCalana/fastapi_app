@@ -13,8 +13,8 @@ class Users(Base):
     __tablename__ = "users"
 
     user_id: Mapped[int] = mapped_column(Integer, primary_key=True, nullable=False)
-    username: Mapped[str] = mapped_column(String, nullable=False)
-    email: Mapped[str] = mapped_column(String, nullable=False)
+    username: Mapped[str] = mapped_column(String(50), nullable=False)
+    email: Mapped[str] = mapped_column(String(120), nullable=False)
     profile_pic: Mapped[str | None] = mapped_column(
         String(200), nullable=True, default=None
     )
@@ -23,6 +23,7 @@ class Users(Base):
         back_populates="author",
         cascade="all, delete-orphan",  # if author user is deleted, all posts of that user will also be deleted
     )
+    password_hash: Mapped[str] =  mapped_column(String(200), nullable=False)
 
     @property
     def img_path(self):

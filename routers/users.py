@@ -1,18 +1,23 @@
 from typing import Annotated
+from datetime import timedelta
 from fastapi import APIRouter, HTTPException, status, Depends
+from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.orm import selectinload
 
 import models
+from config import settings
 from database import get_db
-from schemas import ResponseUser, UpdateUser, CreateUser, ResponseCampaign
+from schemas import PrivateUser, PublicUser, UpdateUser, CreateUser, ResponseCampaign, Token
+
+from auth import hash_password, verify_password, create_access_token, verify_access_token, oauth2_scheme
 
 router = APIRouter()
 
 
 # [API] Fecth all users - Only API, why would users get access to view site users?
-@router.get(path="", response_model=list[ResponseUser])
+@router.get(path="", response_model=list[PublicUser])
 async def get_users(db: Annotated[AsyncSession, Depends(get_db)]):
 
     result = await db.execute(select(models.Users))
@@ -22,6 +27,56 @@ async def get_users(db: Annotated[AsyncSession, Depends(get_db)]):
         return users
     return "No users found"
 
+# The following endpoint is important as it validates the user's token is still good AND provides the user's full details
+@router.get(path="/me", response_model=PrivateUser)
+async def get_current_user(
+    token: Annotated[str, Depends(oauth2_scheme)], # fetches the access token from api/users/token and brings it here
+    db: Annotated[AsyncSession, Depends(get_db)]
+):
+    """ Retrieve the currently authenticated user """
+    user_id = verify_access_token(token)
+    if user_id is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"}
+            )
+    
+    try:
+        user_id_int = int(user_id)
+    except (TypeError, ValueError):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid or expired token",
+            headers={"WWW-Authenticate": "Bearer"}
+            )
+    
+    result = await db.execute(select(models.Users).where(models.Users.user_id==user_id_int))
+    user = result.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+            headers={"WWW-Authenticate": "Bearer"}
+            )
+    
+    return user
+
+# [API] Fecth user by USER ID
+@router.get(path="/{user_id}", response_model=PrivateUser)
+async def get_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
+    user_check = await db.execute(
+        select(models.Users).where(models.Users.user_id == user_id)
+    )
+    user = user_check.scalars().first()
+
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
+        )
+    
+    return user
 
 # [API] Fecth current user's campaigns
 @router.get(path="/{user_id}/campaigns", response_model=list[ResponseCampaign])
@@ -51,10 +106,10 @@ async def user_campaigns(user_id: int, db: Annotated[AsyncSession, Depends(get_d
 
 
 # [API] Create user
-@router.post(path="", response_model=ResponseUser, status_code=status.HTTP_201_CREATED)
+@router.post(path="", response_model=PrivateUser, status_code=status.HTTP_201_CREATED)
 async def create_user(user: CreateUser, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(
-        select(models.Users.user_id).where(models.Users.email == user.email)
+        select(models.Users.user_id).where(func.lower(models.Users.username) == user.username.lower()) # func.lower => case insensitivity
     )
     existing_user = result.scalars().first()
 
@@ -62,17 +117,55 @@ async def create_user(user: CreateUser, db: Annotated[AsyncSession, Depends(get_
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST, detail="User already exists"
         )
+    
+    email_result = await db.execute(
+        select(models.Users.user_id).where(func.lower(models.Users.email) == user.email.lower()) 
+    )
+    existing_email = email_result.scalars().first()
 
-    new_user = models.Users(username=user.username, email=user.email)
+    if existing_email:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST, detail="Email already registered"
+        )
+
+    new_user = models.Users(
+        username=user.username, # keeping the case for display, but still lowercase in validation
+        email=user.email.lower(),
+        password_hash=hash_password(user.password)
+        )
 
     db.add(new_user)  # stages the new user
     await db.commit()  # commits the change (IT DOES COMETHING)
     await db.refresh(new_user)
     return new_user
 
+# [API] Sends login info, then FETCHES user's token
+@router.post(path="/token", response_model=Token, name="Login for User Token")
+async def get_user_token(form_data: Annotated[OAuth2PasswordRequestForm, Depends()], db: Annotated[AsyncSession, Depends(get_db)]):
+    result = await db.execute(select(models.Users).where(func.lower(models.Users.email) == form_data.username.lower()
+                                                         )) # Request form uses email as their username 
+
+    user = result.scalars().first()
+
+    if not user or verify_password(form_data.password, user.password_hash):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail= "Incorrect email or password",
+            headers={"WWW-Authenticate": "Bearer"}
+        )
+
+    access_token_epxires = timedelta(minutes=settings.access_token_expire_minutes)
+    access_token = create_access_token(
+        data={"sub": str(user.user_id)},
+        expire_time=access_token_epxires
+    )
+
+    return Token(access_token=access_token, token_type="Bearer")
+
+
 
 # [API] PATCH ENDPOINT TO UPDATE A USER BY THEIR USER_ ID
-@router.patch(path="/{user_id}", response_model=ResponseUser)
+@router.patch(path="/{user_id}", response_model=PrivateUser)
 async def update_user_partial(
     user_id: int, user_data: UpdateUser, db: Annotated[AsyncSession, Depends(get_db)]
 ):
@@ -89,10 +182,10 @@ async def update_user_partial(
         )
 
     if (
-        user_data.username != None and user_data.username != user.username
+        user_data.username != None and user_data.username.lower() != user.username.lower()
     ):  # Check if new username doesn't match old username
         user_result = await db.execute(
-            select(models.Users).where(models.Users.username == user_data.username)
+            select(models.Users).where(func.lower(models.Users.username) == user_data.username.lower())
         )  # Check if new username doesn't match username in DB
         existing_user = user_result.scalars().first()
 
@@ -102,9 +195,9 @@ async def update_user_partial(
                 detail="Username already exists",
             )
 
-    if user_data.email != None and user_data.email != user.email:
+    if user_data.email != None and user_data.email.lower() != user.email.lower():
         email_result = await db.execute(
-            select(models.Users).where(models.Users.email == user_data.email)
+            select(models.Users).where(func.lower(models.Users.email) == user_data.email.lower())
         )
         existing_email = email_result.scalars().first()
 
@@ -127,7 +220,7 @@ async def update_user_partial(
 
 
 # [API] DELETE USER BY ID
-@router.delete(path="/api/users/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+@router.delete(path="/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_user(user_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
 
     results = await db.execute(

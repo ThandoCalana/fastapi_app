@@ -12,26 +12,34 @@ from datetime import datetime
 class BaseUser(BaseModel):
     username: str = Field(min_length=1, max_length=50)
     email: EmailStr = Field(max_length=50)
-    # password will be added later
 
 
 class CreateUser(BaseUser):
-    # password will be added later
-    pass
+    password: str = Field(min_length=8)
+    
 
 
-class ResponseUser(BaseUser):
+class PublicUser(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
     user_id: int
+    username: str
     profile_pic: str | None
     img_path: str
+
+class PrivateUser(PublicUser):
+    email: EmailStr
 
 
 class UpdateUser(BaseUser):
     username: str | None = Field(default=None, min_length=1, max_length=50)
     email: EmailStr | None = Field(default=None, max_length=50)
     profile_pic: str | None = Field(default=None, min_length=1, max_length=50)
+
+
+class Token(BaseModel):
+    access_token: str
+    token_type: str
 
 
 # -------------------------- CAMPAIGN SCHEMAS ------------------------------------------
@@ -62,7 +70,7 @@ class ResponseCampaign(BaseCampaign):
     # specifying extra fields to be returned by the API in its response
     campaign_id: int
     created_at: datetime
-    author: ResponseUser
+    author: PublicUser
 
 
 class UpdateCampaign(BaseCampaign):
