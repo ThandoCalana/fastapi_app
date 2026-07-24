@@ -16,7 +16,6 @@ class BaseUser(BaseModel):
 
 class CreateUser(BaseUser):
     password: str = Field(min_length=8)
-    
 
 
 class PublicUser(BaseModel):
@@ -26,6 +25,7 @@ class PublicUser(BaseModel):
     username: str
     profile_pic: str | None
     img_path: str
+
 
 class PrivateUser(PublicUser):
     email: EmailStr
@@ -55,10 +55,8 @@ class BaseCampaign(BaseModel):
     campaign_details: str = Field(min_length=1)
 
 
-class CreateCampaign(
-    BaseCampaign
-):  # Can be used to PUT data since all fields are required
-    user_id: int
+class CreateCampaign(BaseCampaign):
+    pass 
 
 
 class ResponseCampaign(BaseCampaign):

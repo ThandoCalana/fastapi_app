@@ -84,7 +84,9 @@ due = now + timedelta(days=randint(1, 10))
 )  # Not useful for API consumption/ dev. THESE ARE ONLY HTML ENDPOINTS NOT API FUNCTIONALITY
 async def home(request: Request, db: Annotated[AsyncSession, Depends(get_db)]):
     query = await db.execute(
-        select(models.Campaigns).options(selectinload(models.Campaigns.author)).order_by(models.Campaigns.created_at.desc())
+        select(models.Campaigns)
+        .options(selectinload(models.Campaigns.author))
+        .order_by(models.Campaigns.created_at.desc())
     )
     campaigns = query.scalars().all()
 
@@ -113,7 +115,7 @@ async def get_user_campaigns(
             .options(selectinload(models.Campaigns.author))
             .where(models.Campaigns.user_id == user_id)
             .order_by(models.Campaigns.created_at.desc())
-        )       
+        )
         campaigns = result.scalars().all()
 
         if campaigns:
@@ -156,15 +158,15 @@ async def campaign_page(
         status_code=status.HTTP_404_NOT_FOUND, detail="No campaign Found"
     )
 
+
 @app.get(
     path="/register",
     name="register_page",
     include_in_schema=False,
 )
 async def register(request: Request):
-    return templates.TemplateResponse(
-        request, "register.html", {"title": "Register"}
-    )
+    return templates.TemplateResponse(request, "register.html", {"title": "Register"})
+
 
 @app.get(
     path="/login",
@@ -172,9 +174,8 @@ async def register(request: Request):
     include_in_schema=False,
 )
 async def login(request: Request):
-    return templates.TemplateResponse(
-        request, "login.html", {"title": "Login"}
-    )
+    return templates.TemplateResponse(request, "login.html", {"title": "Login"})
+
 
 # --------------------------------------------------------------------------------------------------------
 # -------------------------------   EXCEPTION HANDLING ENDPOINTS   ---------------------------------------

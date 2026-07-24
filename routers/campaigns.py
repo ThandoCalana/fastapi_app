@@ -1,6 +1,6 @@
 from datetime import datetime
 from typing import Annotated
-from fastapi import APIRouter, HTTPException, status, Depends, Request
+from fastapi import APIRouter, HTTPException, status, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
@@ -8,6 +8,7 @@ from sqlalchemy.orm import selectinload
 import models
 from database import get_db
 from schemas import UpdateCampaign, CreateCampaign, ResponseCampaign
+from auth import CurrentUser
 
 router = APIRouter()
 
@@ -16,11 +17,13 @@ router = APIRouter()
 @router.get(path="", response_model=list[ResponseCampaign])
 async def get_campaigns(db: Annotated[AsyncSession, Depends(get_db)]):
     query = await db.execute(
-        select(models.Campaigns).options(
+        select(models.Campaigns)
+        .options(
             selectinload(
                 models.Campaigns.author
             )  # selectinload tells the fucntion to also load relationship when it loads up the model
-        ).order_by(models.Campaigns.created_at.desc())
+        )
+        .order_by(models.Campaigns.created_at.desc())
     )
     campaigns = query.scalars().all()
 
@@ -28,17 +31,12 @@ async def get_campaigns(db: Annotated[AsyncSession, Depends(get_db)]):
 
 
 # [API] FETCH CAMPAIGN BY ID
-@router.get(
-    path="/{campaign_id}", response_model=ResponseCampaign
-)
-async def get_campaign(campaign_id: int, db: Annotated[AsyncSession, Depends(get_db)]
-):
+@router.get(path="/{campaign_id}", response_model=ResponseCampaign)
+async def get_campaign(campaign_id: int, db: Annotated[AsyncSession, Depends(get_db)]):
     result = await db.execute(
-        select(models.Campaigns).options(
-            selectinload(
-                models.Campaigns.author
-            )
-        ).where(models.Campaigns.campaign_id == campaign_id)
+        select(models.Campaigns)
+        .options(selectinload(models.Campaigns.author))
+        .where(models.Campaigns.campaign_id == campaign_id)
     )
     campaign = result.scalars().first()  # selects one or none, Returns None
     # users = query.scalar_one() raises an error if nothing is found
@@ -58,12 +56,12 @@ async def get_campaign(campaign_id: int, db: Annotated[AsyncSession, Depends(get
     status_code=status.HTTP_201_CREATED,
 )
 async def create_campaign(
-    campaign: CreateCampaign, db: Annotated[AsyncSession, Depends(get_db)]
-):
-
+    campaign: CreateCampaign, current_user: CurrentUser, db: Annotated[AsyncSession, Depends(get_db)]
+): # Since CurrentUser checks of the user exists, we no longer need the user check in the endpoint
+ 
     new_campaign = models.Campaigns(
         campaign_name=campaign.campaign_name,
-        user_id=campaign.user_id,
+        user_id=current_user.user_id,
         campaign_details=campaign.campaign_details,
         created_at=datetime.now(),
     )
@@ -80,6 +78,7 @@ async def create_campaign(
 async def update_campaign_full(
     campaign_id: int,
     campaign_data: CreateCampaign,
+    current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
 
@@ -94,21 +93,14 @@ async def update_campaign_full(
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Campaign not found"
         )
-
-    if campaign_data.user_id != campaign.user_id:
-        user_check = await db.execute(
-            select(models.Users).where(models.Users.user_id == campaign_data.user_id)
+    if campaign.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this post"
         )
-        user = user_check.scalars().first()
-
-        if not user:
-            raise HTTPException(
-                status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-            )
 
     campaign.campaign_name = campaign_data.campaign_name
     campaign.campaign_details = campaign_data.campaign_details
-    campaign.user_id = campaign_data.user_id
 
     await db.commit()
     await db.refresh(campaign, attribute_names=["author"])
@@ -120,9 +112,9 @@ async def update_campaign_full(
 async def update_campaign_partial(
     campaign_id: int,
     campaign_data: UpdateCampaign,
+    current_user: CurrentUser,
     db: Annotated[AsyncSession, Depends(get_db)],
 ):
-
     # Check campaign exists
     result = await db.execute(
         select(models.Campaigns)
@@ -133,7 +125,14 @@ async def update_campaign_partial(
 
     if not campaign:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="No campaigns found"
+            status_code=status.HTTP_404_NOT_FOUND, 
+            detail="No campaigns found"
+        )
+    
+    if campaign.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to update this post"
         )
 
     update_data = campaign_data.model_dump(exclude_unset=True)
@@ -150,7 +149,9 @@ async def update_campaign_partial(
 # [API] DELETE CAMPAIGNS BY ID
 @router.delete(path="/{campaign_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_campaign(
-    campaign_id: int, db: Annotated[AsyncSession, Depends(get_db)]
+    campaign_id: int,
+    current_user: CurrentUser, 
+    db: Annotated[AsyncSession, Depends(get_db)]
 ):
 
     results = await db.execute(
@@ -167,5 +168,11 @@ async def delete_campaign(
             status_code=status.HTTP_404_NOT_FOUND, detail="No campaign found"
         )
 
+    if campaign.user_id != current_user.user_id:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Not authorized to delete this post"
+        )
+    
     await db.delete(campaign)
     await db.commit()

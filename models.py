@@ -23,7 +23,7 @@ class Users(Base):
         back_populates="author",
         cascade="all, delete-orphan",  # if author user is deleted, all posts of that user will also be deleted
     )
-    password_hash: Mapped[str] =  mapped_column(String(200), nullable=False)
+    password_hash: Mapped[str] = mapped_column(String(200), nullable=False)
 
     @property
     def img_path(self):
